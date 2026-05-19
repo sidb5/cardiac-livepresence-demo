@@ -142,4 +142,6 @@ npm run build
 
 ## Vercel Demo Notes
 
-Deploy the `frontend` folder to Vercel. The demo uses in-memory data, so audit history resets when the serverless/runtime instance resets. That is acceptable for BD walkthroughs. For a persistent hosted demo, add Postgres later.
+The repo includes a root `vercel.json` that deploys only the `frontend` service. In Vercel import, keep the framework/application preset as **Services** if Vercel auto-detects both `frontend` and `backend`. The configured service points to `frontend`, where the full demo UI and API routes live.
+
+The demo uses in-memory data, so audit history resets when the serverless/runtime instance resets. That is acceptable for BD walkthroughs. For a persistent hosted demo, add Postgres later.
