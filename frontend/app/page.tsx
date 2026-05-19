@@ -103,6 +103,7 @@ export default function Home() {
   }, []);
 
   const selectedAsset = useMemo(() => assets.find((asset) => asset.id === assetId), [assets, assetId]);
+  const selectedUser = useMemo(() => users.find((user) => user.id === userId), [users, userId]);
 
   async function runAttempt() {
     setLoading(true);
@@ -198,47 +199,61 @@ export default function Home() {
         </aside>
 
         <section className="workspace">
-          <div className="decisionBand">
+          <DecisionNarrative
+            attempt={attempt}
+            scenario={scenario}
+            identityMode={identityMode}
+            selectedAsset={selectedAsset}
+            selectedUser={selectedUser}
+          />
+
+          <div className="decisionBand" id="decision-summary">
             <Metric label="Decision" value={attempt?.decision ?? "waiting"} tone={attempt?.decision ?? "waiting"} />
             <Metric label="Live Confidence" value={attempt ? `${Math.round(attempt.confidence * 100)}%` : "--"} />
             <Metric label="ECG Identity" value={attempt?.features.ecg_identity_status ?? "--"} />
             <Metric label="Coupling" value={attempt?.features.ecg_ppg_coupling_status ?? "--"} />
           </div>
 
-          <div className="twoCol">
-            <Panel title="Live Access Attempt">
-              {attempt ? (
-                <div className="reasonList">
-                  {attempt.reason_codes.map((reason) => (
-                    <span key={reason}>{reason}</span>
-                  ))}
-                </div>
-              ) : (
-                <div className="emptyBlock">Select a user, asset, mode, and scenario, then run the attempt.</div>
-              )}
-            </Panel>
-            <Panel title="Adapter Outputs">
-              <pre>{attempt ? JSON.stringify(attempt.adapter_outputs, null, 2) : "No adapter output yet."}</pre>
-            </Panel>
-          </div>
-
-          {attempt && (
+          {attempt ? (
             <>
-              <div className="charts">
+              <div className="charts" id="signal-evidence">
                 <SignalTraceChart title="ECG Trace" time={attempt.traces.time} values={attempt.traces.ecg} markers={attempt.traces.r_peaks} color="#58d68d" />
                 <SignalTraceChart title="PPG / Blood-Flow Pulse Trace" time={attempt.traces.time} values={attempt.traces.ppg} markers={attempt.traces.ppg_peaks} color="#5dade2" />
                 <TimingCouplingChart rPeaks={attempt.traces.r_peaks} ppgPeaks={attempt.traces.ppg_peaks} />
               </div>
 
+              <Panel title="Policy Result And Reason Codes" id="policy-reasons">
+                <div className="reasonList">
+                  {attempt.reason_codes.map((reason) => (
+                    <span key={reason}>{reason}</span>
+                  ))}
+                </div>
+              </Panel>
+
               <div className="twoCol">
-                <Panel title="Signed Assertion Viewer">
+                <Panel title="Signed Assertion Viewer" id="assertion-view">
                   <AssertionViewer assertion={attempt.assertion} payload={attempt.assertion_payload} />
                 </Panel>
+                <Panel title="Integration Adapter Outputs" id="integration-output">
+                  <pre>{JSON.stringify(attempt.adapter_outputs, null, 2)}</pre>
+                </Panel>
+              </div>
+
+              <div id="audit-log">
                 <Panel title="Audit Log Viewer">
                   <AuditLogViewer audit={audit} />
                 </Panel>
               </div>
             </>
+          ) : (
+            <div className="twoCol">
+              <Panel title="Signal Evidence" id="signal-evidence">
+                <div className="emptyBlock">Run an access attempt to show ECG, PPG, and timing evidence.</div>
+              </Panel>
+              <Panel title="Policy Result And Reason Codes" id="policy-reasons">
+                <div className="emptyBlock">The decision path and reason codes will appear here after a test.</div>
+              </Panel>
+            </div>
           )}
         </section>
       </section>
@@ -246,9 +261,9 @@ export default function Home() {
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, children, id }: { title: string; children: React.ReactNode; id?: string }) {
   return (
-    <section className="panel">
+    <section className="panel" id={id}>
       <h2>{title}</h2>
       {children}
     </section>
@@ -262,6 +277,129 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: s
       <strong>{value}</strong>
     </div>
   );
+}
+
+function DecisionNarrative({
+  attempt,
+  scenario,
+  identityMode,
+  selectedAsset,
+  selectedUser,
+}: {
+  attempt: AttemptResponse | null;
+  scenario: Scenario;
+  identityMode: IdentityMode;
+  selectedAsset?: Asset;
+  selectedUser?: User;
+}) {
+  const scenarioLabel = scenarios.find((item) => item.id === scenario)?.label ?? scenario;
+  const userLabel = selectedUser?.display_name ?? "selected user";
+  const assetLabel = selectedAsset?.name ?? "selected asset";
+  const assetType = selectedAsset?.asset_type.replaceAll("_", " ") ?? "asset";
+  const modeLabel = identityMode === "ecg_identity_live_presence" ? "ECG identity plus live-presence" : "live-presence only";
+
+  if (!attempt) {
+    return (
+      <section className="narrativeCard">
+        <div>
+          <div className="eyebrow">How to read the demo</div>
+          <h2>Run a test to see the full authorization chain.</h2>
+          <p>
+            Choose a user, asset, demo mode, and signal scenario. The system will score live presence, apply the asset policy,
+            issue a signed assertion, simulate downstream integrations, and write an audit record.
+          </p>
+        </div>
+        <SectionLinks />
+      </section>
+    );
+  }
+
+  const identityText =
+    identityMode === "ecg_identity_live_presence"
+      ? `The current ECG was compared to ${userLabel}'s enrolled ECG template and returned ${attempt.features.ecg_identity_status} at ${Math.round(attempt.features.ecg_identity_score * 100)}%.`
+      : "Identity is assumed to come from an external credential; ECG/PPG is used only to prove live presence for this event.";
+
+  const ppgText =
+    attempt.features.ecg_ppg_coupling_status === "valid"
+      ? `The ECG heartbeat events aligned with later pulse events, with an average delay of ${Math.round((attempt.features.ptt_mean_seconds ?? 0) * 1000)} ms.`
+      : attempt.features.ecg_ppg_coupling_status === "ppg_missing"
+        ? "No PPG / pulse signal was available, so the policy treated this as a reduced-assurance attempt."
+        : "The ECG-to-pulse timing was not plausible, so the live-body timing relationship failed.";
+
+  return (
+    <section className={`narrativeCard ${attempt.decision}`}>
+      <div>
+        <div className="eyebrow">Decision narrative</div>
+        <h2>
+          {prettyDecision(attempt.decision)} for {assetLabel}
+        </h2>
+        <p>
+          The test ran <strong>{scenarioLabel}</strong> in <strong>{modeLabel}</strong> mode for <strong>{userLabel}</strong>.
+          The policy for this <strong>{assetType}</strong> returned <strong>{prettyDecision(attempt.decision).toLowerCase()}</strong>{" "}
+          with {Math.round(attempt.confidence * 100)}% live-presence confidence.
+        </p>
+      </div>
+
+      <ol className="narrativeSteps">
+        <li>
+          <a href="#signal-evidence">Signal evidence</a>
+          <span>{identityText}</span>
+        </li>
+        <li>
+          <a href="#signal-evidence">ECG-to-PPG timing</a>
+          <span>{ppgText}</span>
+        </li>
+        <li>
+          <a href="#policy-reasons">Policy reasons</a>
+          <span>{humanizeReasons(attempt.reason_codes)}</span>
+        </li>
+        <li>
+          <a href="#assertion-view">Signed assertion</a>
+          <span>A short-lived token was generated and bound to this user, asset, policy result, and expiration time.</span>
+        </li>
+        <li>
+          <a href="#integration-output">Integration outputs</a>
+          <span>The same result was translated into REST, Wiegand-style, OSDP-style, relay, zero-trust, and offline adapter outputs.</span>
+        </li>
+        <li>
+          <a href="#audit-log">Audit trail</a>
+          <span>The event was added to a tamper-evident hash chain without storing raw ECG or PPG by default.</span>
+        </li>
+      </ol>
+      <SectionLinks />
+    </section>
+  );
+}
+
+function SectionLinks() {
+  return (
+    <nav className="sectionLinks" aria-label="Dashboard sections">
+      <a href="#decision-summary">Result</a>
+      <a href="#signal-evidence">Signals</a>
+      <a href="#policy-reasons">Reasons</a>
+      <a href="#assertion-view">Assertion</a>
+      <a href="#integration-output">Adapters</a>
+      <a href="#audit-log">Audit</a>
+    </nav>
+  );
+}
+
+function humanizeReasons(reasons: string[]) {
+  if (reasons.includes("policy_allow")) return "All required checks passed for this asset policy.";
+  if (reasons.includes("replay_pattern_detected")) return "The signal looked replayed, so the policy produced a hard deny.";
+  if (reasons.includes("synthetic_signal_risk")) return "The signal looked synthetic or injected, so the policy produced a hard deny.";
+  if (reasons.includes("ecg_ppg_timing_invalid")) return "The ECG and pulse timing did not match a live-body pattern.";
+  if (reasons.includes("ecg_identity_mismatch")) return "The ECG identity score did not match the claimed user.";
+  if (reasons.includes("ppg_required_missing")) return "This asset requires a pulse signal, but PPG was missing.";
+  if (reasons.includes("covert_duress_flag")) return "The event was limited and silently flagged for covert duress review.";
+  if (reasons.includes("live_presence_below_threshold")) return "The live-presence confidence was below the asset threshold.";
+  return reasons.map((reason) => reason.replaceAll("_", " ")).join(", ");
+}
+
+function prettyDecision(decision: string) {
+  return decision
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function CheckList({
