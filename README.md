@@ -1,6 +1,6 @@
 # Live-Presence Authorization Demo
 
-This MVP demonstrates a software-led security layer that receives physiological signal data, evaluates live presence, applies an asset-specific policy, and issues a signed live-presence authorization assertion.
+This MVP is based on a patent I invented for last mile live presence security demonstrates a software-led security layer that receives physiological signal data, evaluates live presence, applies an asset-specific policy, and issues a signed live-presence authorization assertion.
 
 The Vercel demo version is a single Next.js app. The dashboard and API are served by the same server using in-memory demo data.
 
@@ -31,23 +31,9 @@ It is not a medical device, does not diagnose health conditions, and is not prod
 
 Single-server Vercel-style demo:
 
-```powershell
-cd E:\PROJECTS\ECG+PPG-Biometric-Security\PROTOTYPE\frontend
-npm install
-npm run dev
-```
-
 Open `http://localhost:3000`.
 
-Optional Python edge-reference backend:
 
-```powershell
-cd E:\PROJECTS\ECG+PPG-Biometric-Security\PROTOTYPE\backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
 
 The dashboard does not require the Python backend unless `NEXT_PUBLIC_API_BASE` is explicitly set.
 
@@ -85,9 +71,7 @@ Use the dashboard assertion viewer or `POST /assertions/verify`.
 
 Use the dashboard audit log viewer or call:
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:3000/api/audit
-```
+
 
 Audit records are hash-chained in memory for the hosted demo. Raw ECG/PPG traces are not persisted in the default data model.
 
@@ -128,20 +112,6 @@ Future adapters can replace the simulated modules for:
 
 Backend reference tests:
 
-```powershell
-cd E:\PROJECTS\ECG+PPG-Biometric-Security\PROTOTYPE\backend
-pytest
-```
 
-Frontend build:
 
-```powershell
-cd E:\PROJECTS\ECG+PPG-Biometric-Security\PROTOTYPE\frontend
-npm run build
-```
 
-## Vercel Demo Notes
-
-The repo includes a root `vercel.json` that deploys only the `frontend` service. In Vercel import, keep the framework/application preset as **Services** if Vercel auto-detects both `frontend` and `backend`. The configured service points to `frontend`, where the full demo UI and API routes live.
-
-The demo uses in-memory data, so audit history resets when the serverless/runtime instance resets. That is acceptable for BD walkthroughs. For a persistent hosted demo, add Postgres later.
